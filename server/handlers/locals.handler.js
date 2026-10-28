@@ -29,6 +29,7 @@ function config(req, res, next) {
   res.locals.disallow_registration = env.DISALLOW_REGISTRATION;
   res.locals.disallow_login_form = env.DISALLOW_LOGIN_FORM;
   res.locals.login_disabled = env.DISALLOW_LOGIN_FORM && !env.OIDC_ENABLED;
+  res.locals.iap_enabled = env.IAP_ENABLED;
   res.locals.oidc_enabled = env.OIDC_ENABLED;
   res.locals.oidc_button_text = env.OIDC_BUTTON_TEXT;
   res.locals.mail_enabled = env.MAIL_ENABLED;

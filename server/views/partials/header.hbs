@@ -45,11 +45,14 @@
             </a>
           </li>
         {{/if}}
-        <li>
-          <a class="nav" href="/logout" title="Log out">
-            Log out
-          </a>
-        </li>
+        {{!-- behind IAP the next request signs the user straight back in --}}
+        {{#unless iap_enabled}}
+          <li>
+            <a class="nav" href="/logout" title="Log out">
+              Log out
+            </a>
+          </li>
+        {{/unless}}
       {{/if}}
     </ul>
   </nav>

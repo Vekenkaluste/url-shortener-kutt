@@ -74,6 +74,11 @@ passport.use(
   })
 );
 
+if (env.IAP_ENABLED) {
+  const { IapStrategy } = require("./iap");
+  passport.use(new IapStrategy());
+}
+
 if (env.OIDC_ENABLED) {
   async function enableOIDC() {
     const requiredKeys = ["OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPE", "OIDC_EMAIL_CLAIM"];
