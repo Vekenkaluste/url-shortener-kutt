@@ -74,6 +74,7 @@ const spec = {
   IAP_HOSTED_DOMAIN: str({ default: "" }),
   IAP_AUDIENCE: str({ default: "" }),
   IAP_ADMIN_EMAILS: str({ default: "" }),
+  IAP_DOMAIN: str({ default: "" }),
   ENABLE_RATE_LIMIT: bool({ default: false }),
   REPORT_EMAIL: str({ default: "" }),
   CONTACT_EMAIL: str({ default: "" }),

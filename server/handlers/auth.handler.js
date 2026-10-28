@@ -27,6 +27,18 @@ function authenticate(type, error, isStrict, redirect) {
 
       if (err) return next(err);
 
+      // IAP signs the user in again on every request, so sending a user that
+      // came through IAP to /logout would loop back here. show them the error
+      // instead. users signed in by IAP are always verified, so only a ban can
+      // turn them away
+      if (info?.iap && user.banned) {
+        if (req.isHTML && redirect === "page") {
+          res.status(403).render("error", { message: "You're banned from using this website." });
+          return;
+        }
+        throw new CustomError("You're banned from using this website.", 403);
+      }
+
       if (
         req.isHTML &&
         redirect &&

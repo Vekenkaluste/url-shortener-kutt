@@ -33,6 +33,10 @@ COPY server ./server
 COPY static ./static
 COPY custom ./custom
 
+# For the SQLite database of the docker-compose setups. A named volume mounted
+# here starts with this directory's owner, so the node user can write to it.
+RUN mkdir -p /var/lib/kutt && chown node:node /var/lib/kutt
+
 # The base image provides this user; the platform enforces runAsNonRoot.
 USER node
 

@@ -2,6 +2,12 @@ services:
   server:
     build:
       context: .
+    # the image starts the server only, so run the migrations first
+    command: ["sh", "-c", "node node_modules/knex/bin/cli.js migrate:latest && exec node server/server.js --production"]
+    # the image does not contain .env, so hand it to the container
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - db_data_sqlite:/var/lib/kutt
       - custom:/kutt/custom

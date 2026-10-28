@@ -22,5 +22,6 @@ apiRouter.use("/auth", auth);
 
 module.exports = {
   api: apiRouter,
+  health,
   render: renderRouter,
 };

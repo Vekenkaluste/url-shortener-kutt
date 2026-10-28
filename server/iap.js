@@ -12,11 +12,10 @@
 
 const { createRemoteJWKSet, jwtVerify } = require("jose");
 const { Strategy } = require("passport");
-const bcrypt = require("bcryptjs");
 
 const { ROLES } = require("./consts");
 const query = require("./queries");
-const utils = require("./utils");
+const sso = require("./sso");
 const env = require("./env");
 
 const IAP_ISSUER = "https://cloud.google.com/iap";
@@ -27,9 +26,12 @@ const ASSERTION_HEADER = "x-goog-iap-jwt-assertion";
 let remoteJwks;
 
 // the audience names the backend service the assertion was issued for, e.g.
-// /projects/<project number>/global/backendServices/<id>. the backend service is
-// created by the load balancer, so its id is not known in advance; checking the
-// /projects/<project number>/ prefix rejects assertions issued for other projects
+// /projects/<project number>/global/backendServices/<id>. GKE creates the backend
+// service from the declarative IAP config, so its id is not known in advance and
+// only the /projects/<project number>/ prefix is checked. that rejects assertions
+// issued for other projects, but not those issued for another IAP-protected app
+// in the same project; together with s.veke.fi, which serves Kutt without IAP,
+// such an app could replay its users' assertions to Kutt. accepted, see VEKE.md
 function audienceMatches(aud, prefix) {
   const audiences = Array.isArray(aud) ? aud : aud ? [aud] : [];
   return audiences.some(value => value.startsWith(prefix));
@@ -65,21 +67,31 @@ function parseEmails(list) {
     .filter(Boolean);
 }
 
-async function findOrCreateUser(email, adminEmails) {
-  let user = await query.user.find({ email });
+// user ids by email. the user queries cache users by id, not by email, so
+// looking a known user up by id lets every request after the first one use
+// that cache. the map only holds users of the hosted domain, so it stays small
+const userIds = new Map();
 
-  if (!user) {
-    // the password is random and never shown: IAP is the only way in
-    const salt = await bcrypt.genSalt(12);
-    const password = await bcrypt.hash(utils.generateRandomPassword(), salt);
-    try {
-      await query.user.add({ email, password, verified: true });
-    } catch (error) {
-      // two first requests at once: the other one created the user
-      const existing = await query.user.find({ email });
-      if (!existing) throw error;
-    }
-    user = await query.user.update({ email }, {
+async function findUser(email) {
+  const id = userIds.get(email);
+  if (id) {
+    const user = await query.user.find({ id });
+    // the user may have been deleted, or their email changed, since
+    if (user?.email === email) return user;
+    userIds.delete(email);
+  }
+  return sso.findOrCreateUser(email);
+}
+
+async function signIn(email, adminEmails) {
+  let user = await findUser(email);
+  if (!user) return null;
+
+  // IAP has verified the email, so a user waiting for an email confirmation
+  // (e.g. made in the admin panel) does not need one
+  if (!user.verified) {
+    user = await query.user.update({ id: user.id }, {
+      verified: true,
       verification_token: null,
       verification_expires: null,
     });
@@ -87,10 +99,11 @@ async function findOrCreateUser(email, adminEmails) {
 
   // only ever promotes; removing an email from the list does not demote,
   // so an admin made in the admin panel keeps their role
-  if (user && adminEmails.includes(email) && user.role !== ROLES.ADMIN) {
+  if (adminEmails.includes(email) && user.role !== ROLES.ADMIN) {
     user = await query.user.update({ id: user.id }, { role: ROLES.ADMIN });
   }
 
+  userIds.set(email, user.id);
   return user;
 }
 
@@ -108,7 +121,7 @@ class IapStrategy extends Strategy {
 
   authenticate(req) {
     verifyAssertion(req.get(ASSERTION_HEADER), this.options)
-      .then(email => email && findOrCreateUser(email, this.options.adminEmails))
+      .then(email => email && signIn(email, this.options.adminEmails))
       .then(
         user => {
           // the auth handler's callback throws to reject a request, e.g. when no
@@ -116,7 +129,8 @@ class IapStrategy extends Strategy {
           // the middleware's call stack, so hand the throw back to passport as an
           // error, the same way the jwt strategy's verify callback does
           try {
-            user ? this.success(user) : this.fail();
+            // tells the auth handler that logging out will not sign the user out
+            user ? this.success(user, { iap: true }) : this.fail();
           } catch (error) {
             this.error(error);
           }

@@ -38,8 +38,8 @@ if (env.TRUST_PROXY) {
 
 // health check for load balancers and probes. answered before any other
 // middleware, because the custom domain check below queries the database for
-// every request whose host is not DEFAULT_DOMAIN, such as a probe by pod ip
-app.get("/api/health", (_, res) => res.send("OK"));
+// every request whose host is not one of Kutt's own, such as a probe by pod ip
+app.use("/api/health", routes.health);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cookieParser());
