@@ -36,6 +36,8 @@ router.post(
 router.post(
   "/create-admin",
   locals.viewTemplate("partials/auth/form_admin"),
+  // behind IAP users are created on first sign-in and admins come from IAP_ADMIN_EMAILS
+  auth.featureAccess([!env.IAP_ENABLED]),
   validators.createAdmin,
   asyncHandler(helpers.verify),
   helpers.rateLimit({ window: 60, limit: 5 }),

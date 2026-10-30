@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const query = require("./queries");
 const env = require("./env");
 const utils = require("./utils")
+const sso = require("./sso");
 
 const jwtOptions = {
   jwtFromRequest: req => req.cookies?.token,
@@ -74,6 +75,11 @@ passport.use(
   })
 );
 
+if (env.IAP_ENABLED) {
+  const { IapStrategy } = require("./iap");
+  passport.use(new IapStrategy());
+}
+
 if (env.OIDC_ENABLED) {
   async function enableOIDC() {
     const requiredKeys = ["OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPE", "OIDC_EMAIL_CLAIM"];
@@ -108,26 +114,8 @@ if (env.OIDC_ENABLED) {
         async (req, tokenset, userinfo, done) => {
           try {
             const email = userinfo[env.OIDC_EMAIL_CLAIM];
-            const existingUser = await query.user.find({ email });
-  
-            // Existing user.
-            if (existingUser) return done(null, existingUser);
-  
-            // New user.
-            // Generate a random password which is not supposed to be used directly.
-            const salt = await bcrypt.genSalt(12);
-            const password = utils.generateRandomPassword();
-            const newUser = await query.user.add({
-              email,
-              password,
-            });
-            const updatedUser = await query.user.update(newUser, {
-              verified: true,
-              verification_token: null,
-              verification_expires: null,
-            });
-            return done(null, updatedUser);
-  
+            const user = await sso.findOrCreateUser(email);
+            return done(null, user);
           } catch (err) {
             return done(err);
           }

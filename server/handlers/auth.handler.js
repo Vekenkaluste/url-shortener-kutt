@@ -27,6 +27,18 @@ function authenticate(type, error, isStrict, redirect) {
 
       if (err) return next(err);
 
+      // IAP signs the user in again on every request, so sending a user that
+      // came through IAP to /logout would loop back here. show them the error
+      // instead. users signed in by IAP are always verified, so only a ban can
+      // turn them away
+      if (info?.iap && user.banned) {
+        if (req.isHTML && redirect === "page") {
+          res.status(403).render("error", { message: "You're banned from using this website." });
+          return;
+        }
+        throw new CustomError("You're banned from using this website.", 403);
+      }
+
       if (
         req.isHTML &&
         redirect &&
@@ -81,11 +93,14 @@ function authenticate(type, error, isStrict, redirect) {
   }
 }
 
+// behind IAP the signed-in user arrives with every request, so try that first
+const session = env.IAP_ENABLED ? ["iap", "jwt"] : "jwt";
+
 const local = authenticate("local", "Login credentials are wrong.", true, null);
-const jwt = authenticate("jwt", "Unauthorized.", true, "header");
-const jwtPage = authenticate("jwt", "Unauthorized.", true, "page");
-const jwtLoose = authenticate("jwt", "Unauthorized.", false, "header");
-const jwtLoosePage = authenticate("jwt", "Unauthorized.", false, "page");
+const jwt = authenticate(session, "Unauthorized.", true, "header");
+const jwtPage = authenticate(session, "Unauthorized.", true, "page");
+const jwtLoose = authenticate(session, "Unauthorized.", false, "header");
+const jwtLoosePage = authenticate(session, "Unauthorized.", false, "page");
 const apikey = authenticate("localapikey", "API key is not correct.", false, null);
 const oidc = authenticate("oidc", "Unauthorized", true, "page");
 

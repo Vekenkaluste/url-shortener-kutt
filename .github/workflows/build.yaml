@@ -1,0 +1,31 @@
+# The platform's build. Owned by digiteam and the same in every application:
+# do not edit it here. Ask digiteam if you need something it does not do.
+#
+# It runs the Dockerfile through the shared build action
+# (Vekenkaluste/github-action-build-container) and pushes the image. It never
+# deploys.
+#
+#   push to main  → <registry>/url-shortener-kutt/app:main-<sha>
+#   pull request  → <registry>/url-shortener-kutt/app:pr-<n>-<head sha>
+name: Build and Push
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    uses: Vekenkaluste/github-action-build-container/.github/workflows/build.yml@v0.0.2
+    with:
+      # The image is ${ARTIFACT_REGISTRY_URL}/app, i.e. <registry>/url-shortener-kutt/app.
+      service: app
+      context: .

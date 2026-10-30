@@ -1,25 +1,47 @@
-# specify node.js image
-FROM node:22-alpine
+# syntax=docker/dockerfile:1
+#
+# Multi-stage build for the Veke platform. The image bakes in no environment
+# configuration: every value arrives as an environment variable at container
+# start-up, so one artifact is promoted from test to production.
+#
+# The image starts the server only. Database migrations are a separate step,
+# run with the same image before the new version rolls out:
+#   node node_modules/knex/bin/cli.js migrate:latest
 
-# use production node environment by default
-ENV NODE_ENV=production
+# ---------- dependencies ----------
+# Pinned by version and digest: two builds of the same commit must produce the
+# same image. Node 22 is the version upstream Kutt builds and tests with.
+FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS deps
 
-# set working directory.
 WORKDIR /kutt
 
-# download dependencies while using Docker's caching
-RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=package-lock.json,target=package-lock.json \
-    --mount=type=cache,target=/root/.npm \
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
-RUN mkdir -p /var/lib/kutt
+# ---------- runtime ----------
+FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
 
-# copy the rest of source files into the image
-COPY . .
+WORKDIR /kutt
 
-# expose the port that the app listens on
+ENV NODE_ENV=production \
+    PORT=3000
+
+COPY --from=deps /kutt/node_modules ./node_modules
+COPY package.json knexfile.js ./
+COPY server ./server
+COPY static ./static
+COPY custom ./custom
+
+# For the SQLite database of the docker-compose setups. A named volume mounted
+# here starts with this directory's owner, so the node user can write to it.
+RUN mkdir -p /var/lib/kutt && chown node:node /var/lib/kutt
+
+# The base image provides this user; the platform enforces runAsNonRoot.
+USER node
+
 EXPOSE 3000
 
-# intialize database and run the app
-CMD npm run migrate && npm start
+# node runs as pid 1 and exits on SIGTERM through the handler in server.js.
+# Started directly rather than through npm, which writes outside /tmp.
+CMD ["node", "server/server.js", "--production"]

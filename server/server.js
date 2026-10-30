@@ -36,6 +36,11 @@ if (env.TRUST_PROXY) {
   app.set("trust proxy", true);
 }
 
+// health check for load balancers and probes. answered before any other
+// middleware, because the custom domain check below queries the database for
+// every request whose host is not one of Kutt's own, such as a probe by pod ip
+app.use("/api/health", routes.health);
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cookieParser());
 app.use(express.json());
@@ -87,6 +92,14 @@ app.get("*", renders.notFound);
 // handle errors coming from above routes
 app.use(helpers.error);
   
-app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, () => {
   console.log(`> Ready on http://localhost:${env.PORT}`);
+});
+
+// stop accepting connections and let in-flight requests finish. a container
+// runs node as pid 1, which ignores SIGTERM unless it is handled
+process.on("SIGTERM", () => {
+  server.close(() => process.exit(0));
+  server.closeIdleConnections();
+  setTimeout(() => process.exit(0), 10_000).unref();
 });

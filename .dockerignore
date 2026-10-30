@@ -1,2 +1,22 @@
-.git
+# A local .env must never reach the build context: Kutt reads one at start-up
+# (dotenv), so a copied file would override the platform's configuration.
+.env
+.env.*
+!.example.env
+
+# Reinstalled inside the image.
 node_modules
+
+# Local SQLite databases and their journals.
+db/data*
+
+# Not needed to build or run the app.
+.git
+.github
+docs
+
+# Editor and OS cruft.
+.idea
+.vscode
+.DS_Store
+*.log
